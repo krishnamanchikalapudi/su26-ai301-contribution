@@ -1,7 +1,7 @@
 # Contribution [#1]: CI support for Slang testing
 
 **Contribution Number:** 1  
-**Student:** [Your Name]  
+**Student:** Krishna Manchikalapudi
 **Issue:** [AcademySoftwareFoundation/MaterialX #2668](https://github.com/AcademySoftwareFoundation/MaterialX/issues/2668)  
 **Status:** Phase I — In Progress
 
