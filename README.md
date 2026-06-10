@@ -1,15 +1,17 @@
-# Contribution [#]: [Issue Title]
+# Contribution [#1]: CI support for Slang testing
 
-**Contribution Number:** [1 / 2 / 3]  
+**Contribution Number:** 1  
 **Student:** [Your Name]  
-**Issue:** [GitHub issue link]  
-**Status:** [Phase I / Phase II / Phase III / Phase IV] [In Progress / Complete]
+**Issue:** [AcademySoftwareFoundation/MaterialX #2668](https://github.com/AcademySoftwareFoundation/MaterialX/issues/2668)  
+**Status:** Phase I — In Progress
 
 ---
 
 ## Why I Chose This Issue
 
-[1-2 paragraphs explaining why this issue interests you, how it matches your skills/learning goals, what you hope to learn]
+This issue sits at the intersection of shader language tooling and continuous integration infrastructure — two areas I find deeply interesting. MaterialX is a widely adopted standard in the VFX and film industry, and ensuring its Slang backend is reliably tested on CI is critical for long-term quality. The issue is labeled **"help wanted"** by the maintainers, signaling it is genuinely open for community contribution.
+
+I also see this as a great opportunity to learn how large open-source projects structure their CI workflows (GitHub Actions, image comparison testing, compiler-based validation), and to contribute something practically useful rather than cosmetic.
 
 ---
 
@@ -17,142 +19,30 @@
 
 ### Problem Description
 
-[In your own words, what's broken or missing?]
+MaterialX recently gained a Slang shader generator (with Slang support exposed in both Python and JavaScript), but there is **no CI coverage** for validating Slang-generated shaders. Developers can run Slang tests locally, but CI pipelines lack the image comparison infrastructure needed to automatically verify correctness across commits.
 
 ### Expected Behavior
 
-[What should happen?]
+Slang shader generation should be validated in CI automatically on every pull request and merge, similar to how GLSL and MSL shader compilation is currently tested. The workflow should:
+1. Download a prebuilt release of Slang (the `slangc` compiler) from GitHub.
+2. Run `generateShader.py` with `slangc` as the validation command.
+3. Report any compilation or comparison failures as CI failures.
 
 ### Current Behavior
 
-[What actually happens?]
+- CI has no Slang-specific test step.
+- Developers must run Slang validation tests manually on their local machines.
+- There is no image comparison infrastructure on CI for Slang output.
 
 ### Affected Components
 
-[Which parts of the codebase are involved?]
+- **CI workflow files** (GitHub Actions `.yml` files in `.github/workflows/`)
+- **`generateShader.py`** — the Python script used for shader generation and validation, which already accepts a compiler command as an argument
+- **MaterialX Slang generator** (`source/MaterialXGenShader` / Slang backend) — already exposed in Python and JavaScript as of [this commit](https://github.com/AcademySoftwareFoundation/MaterialX/commit/ef1d56c9470e42f6abcc338875bd083e6d687ff0)
 
----
+### Additional Context from Issue Discussion
 
-## Reproduction Process
-
-### Environment Setup
-
-[Notes on setting up your local development environment - challenges you faced, how you solved them]
-
-### Steps to Reproduce
-
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
-
-### Reproduction Evidence
-
-- **Commit showing reproduction:** [Link to commit in your fork]
-- **Screenshots/logs:** [If applicable]
-- **My findings:** [What you discovered during reproduction]
-
----
-
-## Solution Approach
-
-### Analysis
-
-[Your analysis of the root cause - what's causing the issue?]
-
-### Proposed Solution
-
-[High-level description of your fix approach]
-
-### Implementation Plan
-
-Using UMPIRE framework (adapted):
-
-**Understand:** [Restate the problem]
-
-**Match:** [What similar patterns/solutions exist in the codebase?]
-
-**Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
-
-**Implement:** [Link to your branch/commits as you work]
-
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
-
-**Evaluate:** [How will you verify it works?]
-
----
-
-## Testing Strategy
-
-### Unit Tests
-
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
-
-### Integration Tests
-
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
-
-### Manual Testing
-
-[What you tested manually and results]
-
----
-
-## Implementation Notes
-
-### Week [X] Progress
-
-[What you built this week, challenges faced, decisions made]
-
-### Week [Y] Progress
-
-[Continue documenting as you work]
-
-### Code Changes
-
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
-
----
-
-## Pull Request
-
-**PR Link:** [GitHub PR URL when submitted]
-
-**PR Description:** [Draft or final PR description - much of the content above can be adapted]
-
-**Maintainer Feedback:**
-- [Date]: [Summary of feedback received]
-- [Date]: [How you addressed it]
-
-**Status:** [Awaiting review / Iterating / Approved / Merged]
-
----
-
-## Learnings & Reflections
-
-### Technical Skills Gained
-
-[What you learned technically]
-
-### Challenges Overcome
-
-[What was hard and how you solved it]
-
-### What I'd Do Differently Next Time
-
-[Reflection on your process]
-
----
-
-## Resources Used
-
-- [Link to helpful documentation]
-- [Tutorial or Stack Overflow post that helped]
-- [GitHub issues or discussions that helped]
+- Maintainer `jstone-lucasfilm` confirmed the scope: CI support specifically for *Slang* testing.
+- Contributor `kwokcb` suggested downloading a Slang GitHub release and passing `slangc` as the validation command to `generateShader.py`, following the same pattern used for GLSL and MSL.
+- `kwokcb` also noted that Slang releases do **not** include RHI, which actually simplifies CI setup (no need to build RHI from source).
+- A related issue in the Slang repo — [shader-slang/slang#8995](https://github.com/shader-slang/slang/issues/8995) ("Create CI test coverage for MaterialX repo") — has already been **completed**, indicating upstream coordination is in place.
