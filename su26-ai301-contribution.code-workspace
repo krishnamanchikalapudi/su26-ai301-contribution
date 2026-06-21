@@ -2,6 +2,18 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../MaterialX"
+		},
+		{
+			"path": "../apache-superset"
+		},
+		{
+			"path": "../apache-spark"
+		},
+		{
+			"path": "../apache-opendal"
 		}
 	],
 	"settings": {}
