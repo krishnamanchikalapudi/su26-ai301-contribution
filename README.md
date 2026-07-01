@@ -3,7 +3,7 @@
 **Contribution Number:** 1  
 **Student:** Krishna Manchikalapudi
 **Issue:** [AcademySoftwareFoundation/MaterialX #2668](https://github.com/AcademySoftwareFoundation/MaterialX/issues/2668)  
-**Status:** Phase IV Complete — Pull Request Submitted & Awaiting Review  
+**Status:** Awaiting review  
 **Branch:** [krishnamanchikalapudi/MaterialX@fix-issue-2668](https://github.com/krishnamanchikalapudi/MaterialX/tree/fix-issue-2668)  
 **PR:** [MaterialX/pull/2982](https://github.com/AcademySoftwareFoundation/MaterialX/pull/2982)
 
@@ -165,14 +165,15 @@ We completed the implementation of automated Slang shader validation within the 
 ---
 ---
 ---
+
 # Contribution [#2]: Fixing the vercel_artifacts backend
 
 **Contribution Number:** 2  
 **Student:** Krishna Manchikalapudi
 **Issue:** [Apache/Opendal #2198](https://github.com/apache/opendal/issues/2198)  
-**Status:** Phase IV Complete — Pull Request Submitted & Awaiting Review  
+**Status:** Awaiting review  
 **Branch:** [krishnamanchikalapudi/Opendal@fix-issue-2198](https://github.com/krishnamanchikalapudi/apache-opendal)  
-**PR:** [apache/opendal#2198](https://github.com/apache/opendal/pull/7793)
+**PR:** [apache/opendal#7793](https://github.com/apache/opendal/pull/7793)
 
 
 ## Why I Chose This Issue
@@ -263,7 +264,7 @@ We completed the implementation of `stat` support and corrected capability gatin
 
 ## Pull Request & Feedback
 
-* **PR Link:** [`apache/opendal#2198`](https://github.com/apache/opendal/pull/2198)
+* **PR Link:** [apache/opendal#7793](https://github.com/apache/opendal/pull/7793)
 * **PR Description:**
   - **Which issue does this PR close?** Closes #2198.
   - **Rationale for this change:** The `vercel_artifacts` cache backend (used for Vercel's Remote Cache) had multiple failing behavior tests because it did not implement standard operations like `stat`, and attempted to run unsupported operations like `delete` and `create_dir`. Vercel's Remote Cache API is a simple flat key-value cache that does not support folder hierarchies or deleting individual cache entries. This PR fixes the failures by implementing a proper `stat` checker (using a `HEAD` request to verify artifact existence) and configuring capabilities to skip the unsupported `delete` and `create_dir` operations.
@@ -275,9 +276,139 @@ We completed the implementation of `stat` support and corrected capability gatin
   - **AI Usage Statement:** I used Gemini (Antigravity AI coding assistant) to assist in reproducing the issue, identifying the REST API constraints, implementing the `stat` directory check logic, and structuring the PR description.
 * **GitHub Issue Comment:**
   > Hi @Xuanwo, I've resolved the `vercel_artifacts` behavior test failures by implementing the `stat` operation via a `HEAD` request to `/v8/artifacts/{hash}`, along with returning directory metadata for paths ending with a slash. Since Vercel's Remote Cache REST API does not support deleting individual cache entries or directory hierarchies, we keep `delete` and `create_dir` disabled in the backend capabilities so the test runner correctly bypasses them. I have submitted a pull request with these changes for your review.
-* **Status:** Merged
+* **Status:** Awaiting review
 
 ---
 ---
 ---
 
+<!-- 
+
+# Contribution [#3]: Add support for the OCI GenericChatRequest
+
+**Contribution Number:** 3  
+**Student:** Krishna Manchikalapudi  
+**Issue:** [spring-projects/spring-ai #4449](https://github.com/spring-projects/spring-ai/issues/4449)  
+**Status:** Awaiting review  
+**Branch:** [krishnamanchikalapudi/spring-ai@fix-issue-4449](https://github.com/krishnamanchikalapudi/spring-ai)  
+**PR:** [spring-projects/spring-ai#4600](https://github.com/spring-projects/spring-ai/pull/4600)  
+
+
+## Why I Chose This Issue
+
+This issue is in Spring AI, a highly popular framework for building Java-based AI applications. The framework currently integrates with various cloud-based model providers, including Oracle Cloud Infrastructure (OCI) Generative AI service. However, the existing implementation only supports Cohere model families. I chose this issue because I wanted to enable Spring AI applications to connect with a much broader array of foundation models (such as Meta's Llama models) hosted on OCI. Adding support for OCI's `GenericChatRequest` solves this exact gap, bringing generic LLM support to OCI users.
+
+## Understanding the Issue
+
+### Problem Description
+
+In Spring AI's OCI GenAI module (`spring-ai-oci-genai`), the `OCICohereChatModel` class hardcodes `CohereChatRequest` and `CohereChatResponse` structures when sending requests to OCI. While Cohere models work correctly under this implementation, any attempts to use non-Cohere foundation models (like Llama 3) fail. The OCI Generative AI service requires requests for non-Cohere models to be formatted as `GenericChatRequest` and returned as `GenericChatResponse`.
+
+### Expected Behavior
+
+The OCI GenAI module should support both Cohere and generic chat requests. When a user configures a generic chat model (such as a Meta Llama model on OCI), Spring AI should:
+1. Construct a `GenericChatRequest` using the OCI SDK.
+2. Properly set `apiFormat = BaseChatRequest.ApiFormat.Generic` (or `API_FORMAT_GENERIC`).
+3. Convert Spring AI's standardized `Message` history (User, System, Assistant) to OCI-compatible message structures (`UserMessage`, `SystemMessage`, `AssistantMessage`).
+4. Execute the request via `GenerativeAiInference` client and parse the returned `GenericChatResponse` into a standard `ChatResponse`.
+
+### Current Behavior
+
+- The OCI GenAI module only has `OCICohereChatModel` and `OCICohereChatOptions`.
+- There is no support for `GenericChatRequest` or `GenericChatResponse` structures in OCI inference.
+- Non-Cohere models cannot be targeted.
+
+### Affected Components
+
+- **`spring-ai-oci-genai` module**:
+  - `org.springframework.ai.oci` package (needs new generic model classes)
+- **`spring-ai-autoconfigure-model-oci-genai` module**:
+  - `org.springframework.ai.model.oci.genai.autoconfigure` (auto-configuration classes to register the new model and properties)
+
+## Reproduction / Analysis Process
+
+Because this is a feature enhancement and missing support issue, reproduction and analysis involved verifying that non-Cohere models failed under the existing Cohere-specific client and studying the OCI Generative AI Java SDK.
+
+### Steps to Analyze
+
+1. Checked the OCI Generative AI SDK client signature and verified that the `GenerativeAiInference` client's `chat` method takes a `ChatRequest` containing a `ChatDetails` body.
+2. Inspected the existing `OCICohereChatModel.java`: it populates `ChatDetails.chatRequest` with `CohereChatRequest`.
+3. Attempted to pass a Llama model ID (e.g. `meta.llama-3-70b-instruct`) using `OCICohereChatModel` and observed that the OCI service rejected the request, indicating that the Cohere API format is incompatible with the specified model.
+4. Analyzed the OCI Java SDK docs to determine how to format `GenericChatRequest`. Verified that it requires `UserMessage`, `SystemMessage`, and `AssistantMessage` items populated under the request's messages list, with options mapped to standard OCI GenAI generic options.
+
+### Branch Link
+
+Working branch in my fork: **[`krishnamanchikalapudi/spring-ai@fix-issue-4449`](https://github.com/krishnamanchikalapudi/spring-ai/tree/fix-issue-4449)**
+
+## Solution Approach
+
+### Implementation Plan (UMPIRE)
+
+**Understand.** Spring AI needs a generic chat model connector for OCI that constructs a `GenericChatRequest` rather than a `CohereChatRequest`. We need to introduce new options, properties, a model class, and update auto-configuration to instantiate it.
+
+**Match.** We match the design of the existing `OCICohereChatModel` and standard Spring AI model connectors:
+- Create `OciGenericChatModel` (implementing `ChatModel`) and `OciGenericChatOptions`.
+- Create matching property files: `OciGenericChatModelProperties`.
+- Update `OciGenAiChatAutoConfiguration` to configure `OciGenericChatModel` if generic properties are enabled.
+
+**Plan.**
+1. Create `OciGenericChatOptions` mapping standard chat options (temperature, topP, topK, maxTokens, presencePenalty, frequencyPenalty, servingMode).
+2. Create `OciGenericChatModel` that takes `GenerativeAiInference` client and options.
+3. Map Spring AI's `Message` objects to OCI SDK's message types (`com.oracle.bmc.generativeaiinference.model.UserMessage`, `com.oracle.bmc.generativeaiinference.model.SystemMessage`, `com.oracle.bmc.generativeaiinference.model.AssistantMessage`).
+4. Build `GenericChatRequest` and call OCI GenAI `chat` service. Parse `GenericChatResponse` choices into Spring AI `Generation` objects.
+5. Register configuration properties and update the auto-configuration class to boot the model.
+
+**Implement.** Implemented the changes in the OCI GenAI model and autoconfigure modules.
+
+**Review.** Ensure checkstyle, formatting, and tests pass.
+
+**Evaluate.** Validate via local integration tests using an active OCI Generative AI sandbox account with a Llama model deployment.
+
+## Implementation Notes
+
+We completed the implementation of `OciGenericChatModel` and integrated it into the auto-configuration lifecycle.
+
+### Files Modified
+
+* **[`OciGenericChatModel.java`](file:///Users/krishna/Documents/GitHub/spring-ai/models/spring-ai-oci-genai/src/main/java/org/springframework/ai/oci/generic/OciGenericChatModel.java)**: [NEW]
+  - Implements the `ChatModel` interface.
+  - Builds `GenericChatRequest` using the OCI SDK, converting message objects and settings.
+  - Converts response payload to standard Spring AI outputs.
+* **[`OciGenericChatOptions.java`](file:///Users/krishna/Documents/GitHub/spring-ai/models/spring-ai-oci-genai/src/main/java/org/springframework/ai/oci/generic/OciGenericChatOptions.java)**: [NEW]
+  - Contains configuration properties for OCI generic models.
+* **[`OciGenericChatModelProperties.java`](file:///Users/krishna/Documents/GitHub/spring-ai/auto-configurations/models/spring-ai-autoconfigure-model-oci-genai/src/main/java/org/springframework/ai/model/oci/genai/autoconfigure/OciGenericChatModelProperties.java)**: [NEW]
+  - Exposes generic OCI properties under prefix `spring.ai.oci.genai.generic`.
+* **[`OciGenAiChatAutoConfiguration.java`](file:///Users/krishna/Documents/GitHub/spring-ai/auto-configurations/models/spring-ai-autoconfigure-model-oci-genai/src/main/java/org/springframework/ai/model/oci/genai/autoconfigure/OciGenAiChatAutoConfiguration.java)**: [MODIFY]
+  - Exposes the `OciGenericChatModel` bean dynamically based on configuration presence.
+
+## Code Changes
+
+* **Active Development Branch:** [`krishnamanchikalapudi/spring-ai@fix-issue-4449`](https://github.com/krishnamanchikalapudi/spring-ai/tree/fix-issue-4449)
+* **Pull Request:** [`spring-projects/spring-ai#4600`](https://github.com/spring-projects/spring-ai/pull/4600)
+
+## Challenges Faced
+
+* **OCI SDK Message Types:** Unlike the Cohere request which takes a flat list of `CohereMessage` where speaker is denoted by class type (`CohereUserMessage`, `CohereChatBotMessage`), OCI's `GenericChatRequest` uses a list of `com.oracle.bmc.generativeaiinference.model.Message` objects (subclassed by `UserMessage`, `SystemMessage`, `AssistantMessage`). The messages must be structured under a `Content` list inside the message payload. We resolved this by implementing helper mappings that handle this translation cleanly.
+* **Property Namespace Separation:** To prevent configuration conflicts with the existing Cohere chat model, we namespace-separated the properties using `spring.ai.oci.genai.generic` versus `spring.ai.oci.genai.cohere`, enabling users to run both clients concurrently in the same application.
+
+## Testing Strategy
+
+* **Unit Testing:** Created comprehensive options tests (`OciGenericChatOptionsTests.java`) to ensure deep copy, merging, and JSON serialization match OCI expectations.
+* **Integration Testing:** Added `OciGenericChatModelIT.java` that connects to an active OCI GenAI client. Validated chat completions against `meta.llama-3-70b-instruct` model on OCI, verifying correct conversion of multi-turn chat conversations.
+
+## Pull Request & Feedback
+
+* **PR Link:** [`spring-projects/spring-ai#4600`](https://github.com/spring-projects/spring-ai/pull/4600)
+* **PR Description:**
+  - **What does this PR do?**
+    This PR adds support for OCI's `GenericChatRequest` and `GenericChatResponse` in the `spring-ai-oci-genai` module, allowing developers to use generic chat models (such as Meta's Llama models) hosted on Oracle Cloud Infrastructure.
+  - **Why was this PR needed?**
+    Closes #4449. The previous implementation was limited exclusively to Cohere-specific request structures.
+  - **Testing details:**
+    Includes unit tests for option mappings and integration tests (`OciGenericChatModelIT`) validating model completion over real OCI endpoints.
+* **Status:** Awaiting review from project maintainers.
+
+---
+---
+---
+-->
