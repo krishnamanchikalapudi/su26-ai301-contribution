@@ -282,7 +282,6 @@ We completed the implementation of `stat` support and corrected capability gatin
 ---
 ---
 
-
 # Contribution [#3]: JDK26 support with lates spark 4.2-preview5
 
 **Contribution Number:** 3  
