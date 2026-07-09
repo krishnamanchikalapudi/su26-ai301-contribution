@@ -282,130 +282,153 @@ We completed the implementation of `stat` support and corrected capability gatin
 ---
 ---
 
-# Contribution [#3]: JDK26 support with lates spark 4.2-preview5
+# Contribution [#3]: When using FnApi and DataStream, bundle processing is not isolated due to limited queues and multiplexing
 
 **Contribution Number:** 3  
 **Student:** Krishna Manchikalapudi  
-**Issue:** [apache/spark#56939](https://github.com/apache/spark/issues/56939)  
-**Status:** Awaiting review  
-**Branch:** [krishnamanchikalapudi/apache-spark@SPARK-XXXXX-jdk26-platform-cleaner](https://github.com/krishnamanchikalapudi/apache-spark/tree/SPARK-XXXXX-jdk26-platform-cleaner)  
-**PR:** [apache/spark#56952](https://github.com/apache/spark/pull/56952)  
-
+**Issue:** [apache/beam#39001](https://github.com/apache/beam/issues/39001)  
+**Status:** Merged  
+**Branch:** [krishnamanchikalapudi/apache-beam@fix-39001-named-data-stream-lifecycle](https://github.com/krishnamanchikalapudi/apache-beam/tree/fix-39001-named-data-stream-lifecycle)  
+**PR:** [apache/beam#39255](https://github.com/apache/beam/pull/39255)  
 
 ## Why I Chose This Issue
 
-This issue is in Apache Spark, the industry-standard unified analytics engine for large-scale data processing. I chose this issue because I have a strong interest in JVM internals, compiler evolution, and framework compatibility. Java 26 introduces changes that break backward compatibility by removing internal classes such as `jdk.internal.ref.Cleaner`. Fixing class loader and static initialization failures in core components of Spark ensures its platform resilience on newer Java versions.
+This issue is in Apache Beam, the preeminent open-source unified programming model for batch and streaming data processing pipelines. I chose this issue because I am highly interested in distributed systems communication protocols, specifically the gRPC-based Beam Fn API that coordinates data and control planes between runners and language SDK harnesses. Enhancing resource isolation on the data plane is vital for pipeline stability and performance under heavy load, and addressing connection lifecycle leaks is a critical aspect of engine health.
 
 ## Understanding the Issue
 
 ### Problem Description
 
-Spark's memory management engine uses off-heap memory allocation via `java.nio.DirectByteBuffer`. To eagerly release off-heap memory, Spark utilizes reflection to load and invoke the internal JDK utility `jdk.internal.ref.Cleaner`. 
+Apache Beam's Fn API uses a shared `DataStream` RPC to transmit element data between the runner and the SDK harness. However, having all active bundle processing requests share a single physical gRPC data stream can cause **head-of-line blocking**. If one bundle processes its data slowly, its internal buffer/queue fills up. When the queue is full, the SDK stops reading from the shared gRPC stream, blocking other healthy bundles from receiving their inputs.
 
-In Spark's `org.apache.spark.unsafe.Platform` class, the static initializer attempted to load `jdk.internal.ref.Cleaner` using reflection:
-```java
-Class<?> cleanerClass = Class.forName("jdk.internal.ref.Cleaner");
-Method createMethod = cleanerClass.getMethod("create", Object.class, Runnable.class);
-```
-In JDK 26, `jdk.internal.ref.Cleaner` is removed completely. Since `Platform.java` did not catch `ClassNotFoundException` or `NoSuchMethodException` from these lookups at the outer scope, `Platform` failed to load, throwing `ExceptionInInitializerError` whenever Spark attempted to initialize its core context, crashing the entire application.
+To solve this, Beam introduced support for **named data streams** (via issue [#38863](https://github.com/apache/beam/issues/38863)). Under this model, the runner can assign unique stream IDs to separate bundles to isolate their data traffic.
+
+**The Bug:**
+In the Java SDK harness, the `BeamFnDataGrpcClient` cached the multiplexer (and its underlying physical gRPC connection) per endpoint and stream ID combination in `multiplexerCache` indefinitely. Because runners can dynamically allocate fresh, unique named data stream IDs for new bundles over time, the SDK harness would accumulate these multiplexers and connections forever, resulting in a severe **gRPC connection and memory leak**.
 
 ### Expected Behavior
 
-If `jdk.internal.ref.Cleaner` is missing (as in JDK 26+), Spark should catch the reflection exceptions gracefully, set `CLEANER_CREATE_METHOD = null`, and fallback to default JVM garbage collection for direct buffer cleanup, rather than aborting class initialization.
+- Named data streams should be reference-counted by the SDK harness.
+- A named stream should be opened when a processing bundle starts using it, and automatically closed and removed from the cache when no active bundles are using it.
+- The default (empty/unnamed) data stream should remain open for the entire lifetime of the SDK harness client to prevent connection churn in standard workloads.
 
 ### Current Behavior
 
-Spark fails to load `Platform` with an `ExceptionInInitializerError` caused by `ClassNotFoundException: jdk.internal.ref.Cleaner`, preventing context initialization.
+- The harness cached named data stream multiplexers indefinitely, leading to resource leaks when unique stream IDs were assigned dynamically.
 
 ### Affected Components
 
-- **`common/unsafe/src/main/java/org/apache/spark/unsafe/Platform.java`**: Spark's low-level unsafe platform interface containing off-heap memory helpers.
+- **[`ProcessBundleHandler.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/control/ProcessBundleHandler.java)**
+- **[`BeamFnDataClient.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/data/BeamFnDataClient.java)**
+- **[`BeamFnDataGrpcClient.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/data/BeamFnDataGrpcClient.java)**
+
+---
 
 ## Reproduction Process
 
 ### Environment Setup
 
-- **OS / shell:** macOS, zsh.
-- **JDK:** JDK 26 (or a mock runtime environment where `jdk.internal.ref.Cleaner` is absent).
-- **Repo:** Cloned `apache/spark` locally.
+- **OS / Shell:** macOS (darwin 25.5.0), zsh.
+- **Java:** OpenJDK 25 / 26.
+- **Repo:** Cloned the `apache/beam` repository locally and checked out the topic branch `fix-39001-named-data-stream-lifecycle`.
 
 ### Steps to Reproduce
 
-1. Compile and run Spark tests or boot a Spark context using JDK 26:
-   ```bash
-   ./build/sbt "core/testOnly org.apache.spark.SparkContextSuite"
-   ```
-2. Observe the static initialization crash:
-   ```
-   java.lang.ExceptionInInitializerError
-       at org.apache.spark.unsafe.Platform.<clinit>(Platform.java:82)
-       ...
-   Caused by: java.lang.ClassNotFoundException: jdk.internal.ref.Cleaner
-       at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:602)
-   ```
+Because this is a resource leak, reproduction involves showing that named data stream multiplexers are retained in the internal client cache after use.
 
-### Branch Link
+1. Instantiate `BeamFnDataGrpcClient` and request an outbound observer for a specific named data stream ID (e.g., `streamA`).
+2. Simulate bundle processing completion.
+3. Check the internal client cache `multiplexerCache`. Notice that the multiplexer and its active gRPC connection targeting `streamA` are still cached and have not been closed or evicted.
+4. Over a long-running pipeline execution where the runner assigns a unique stream ID per bundle, observe memory growth and socket depletion in the SDK harness JVM due to leaked gRPC channels.
 
-Working branch in my fork: **[`krishnamanchikalapudi/apache-spark@SPARK-XXXXX-jdk26-platform-cleaner`](https://github.com/krishnamanchikalapudi/apache-spark/tree/SPARK-XXXXX-jdk26-platform-cleaner)**
+---
 
 ## Solution Approach
 
 ### Implementation Plan (UMPIRE)
 
-**Understand.** The static block in `Platform.java` crashes on JDK 26 because `jdk.internal.ref.Cleaner` was removed. We need to handle this exception gracefully and disable the reflection-based cleaner fallback.
+**Understand.** We need to manage the lifecycle of named data stream multiplexers based on active bundle usage. When a bundle starts processing on a named stream, the reference count for that stream should increment. When the bundle finishes processing (successfully or exceptionally), the count should decrement. If the reference count drops to zero, the multiplexer must be closed and evicted from the client cache. The default stream (`""`) must be excluded from this logic.
 
-**Match.** We match the existing fallback handler of `IllegalAccessException` in `Platform.java`:
-- Wrap both `Class.forName` and `getMethod` in a try-catch catching `ClassNotFoundException | NoSuchMethodException`.
-- In the catch block, set `createMethod = null` and fall back.
+**Match.** We match standard Java reference counting patterns. We track reference counts in a synchronized map inside `BeamFnDataGrpcClient`. We match the execution entry and exit points in `ProcessBundleHandler.processBundle` to increment and decrement the references.
 
 **Plan.**
-1. Modify `Platform.java` static initializer block.
-2. Group lookup logic into a try-catch for `ClassNotFoundException | NoSuchMethodException`.
-3. Set `createMethod = null` upon catching these exceptions, mimicking the behavior when access is denied.
+1. **Extend Client Interface:** Add `retainDataStream(String dataStreamId)` and `releaseDataStream(String dataStreamId)` to the `BeamFnDataClient` interface.
+2. **Reference Counting:** In `BeamFnDataGrpcClient`, implement a `dataStreamRefCounts` map and a dedicated lock `dataStreamLifecycleLock` to guard lifecycle changes.
+3. **Cache Eviction and Closing:** In `releaseDataStream`, decrement the ref count. If it hits zero, remove all matching multiplexers from the cache and close them.
+4. **Thread-Safe Insertion:** Update `getMultiplexer` to run under the lifecycle lock to avoid race conditions (e.g., creating a multiplexer while it is being closed and removed).
+5. **Harness Hook:** Update `ProcessBundleHandler.processBundle` to call `retainDataStream` on entry and `releaseDataStream` in a `finally` block to ensure release on both success and failure.
+6. **Custom CI Workflow:** Add a fork-friendly GitHub Actions workflow `.github/workflows/fork_ci_java_harness.yml` targeting the Java harness code to facilitate testing without requiring upstream self-hosted runners.
 
-**Implement.** Implemented the catch block in the `unsafe/Platform.java` file.
+**Implement.** Implemented the changes in the target Java source files and tests.
 
-**Review.** Ensure build compiles and code style meets Spark's strict checkstyle conventions.
+**Review.** Ensured that the expensive `multiplexer.close()` operation is invoked *outside* of the `dataStreamLifecycleLock` synchronized block to prevent blocking concurrent threads.
 
-**Evaluate.** Validate that Spark loads and passes tests on JDK 26.
+**Evaluate.** Wrote comprehensive unit tests to assert that:
+- Named data streams are closed when their reference count drops to zero.
+- The default data stream is never closed on release.
+- Named data streams are correctly cleaned up even if the bundle processing fails with an exception.
+
+---
 
 ## Implementation Notes
 
-We completed the fix in the Platform initializer and verified class loading.
+We completed the implementation of reference-counted named data stream lifecycles in the Java SDK harness.
 
 ### Files Modified
 
-* **[`Platform.java`](file:///Users/krishna/Documents/GitHub/apache-spark/common/unsafe/src/main/java/org/apache/spark/unsafe/Platform.java)**:
-  - Wrapped reflection class/method lookup for `jdk.internal.ref.Cleaner` in try-catch blocks to tolerate its absence.
+* **[`BeamFnDataClient.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/data/BeamFnDataClient.java)**:
+  - Added default methods `retainDataStream` and `releaseDataStream` to manage lifecycle hooks.
+* **[`BeamFnDataGrpcClient.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/data/BeamFnDataGrpcClient.java)**:
+  - Added `dataStreamLifecycleLock` and `dataStreamRefCounts` map.
+  - Implemented `retainDataStream` to increment the reference counts of named streams.
+  - Implemented `releaseDataStream` to decrement the reference counts, remove the entry from `multiplexerCache` upon reaching zero, and close the underlying gRPC stream.
+  - Synchronized `getMultiplexer` under the lifecycle lock to guarantee atomic creation.
+* **[`ProcessBundleHandler.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/control/ProcessBundleHandler.java)**:
+  - Invokes `retainDataStream` when starting bundle execution on a named stream.
+  - Releases the stream inside a `finally` block to guarantee cleanup.
+* **[`BeamFnDataGrpcClientTest.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/test/java/org/apache/beam/fn/harness/data/BeamFnDataGrpcClientTest.java)**:
+  - Added `testNamedDataStreamClosedWhenNoLongerRetained` to verify reference counting and closure.
+  - Added `testDefaultDataStreamIsNotClosedOnRelease` to verify that the default stream remains cached.
+* **[`ProcessBundleHandlerTest.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/test/java/org/apache/beam/fn/harness/control/ProcessBundleHandlerTest.java)**:
+  - Added `testNamedDataStreamReleasedOnBundleFailure` to verify streams are released on processing exceptions.
+* **[`.github/workflows/fork_ci_java_harness.yml`](file:///Users/krishna/Documents/GitHub/apache-beam/.github/workflows/fork_ci_java_harness.yml)**:
+  - Created a new GitHub Actions workflow to build and test the Java SDK harness on fork repositories.
+* **[`CHANGES.md`](file:///Users/krishna/Documents/GitHub/apache-beam/CHANGES.md)**:
+  - Documented the bugfix under the "Bugfixes" section.
+
+---
 
 ## Code Changes
 
-* **Active Development Branch:** [`krishnamanchikalapudi/apache-spark@SPARK-XXXXX-jdk26-platform-cleaner`](https://github.com/krishnamanchikalapudi/apache-spark/tree/SPARK-XXXXX-jdk26-platform-cleaner)
-* **Pull Request:** [`apache/spark#56952`](https://github.com/apache/spark/pull/56952)
+* **Active Development Branch:** [`krishnamanchikalapudi/apache-beam@fix-39001-named-data-stream-lifecycle`](https://github.com/krishnamanchikalapudi/apache-beam/tree/fix-39001-named-data-stream-lifecycle)
+* **Pull Request:** [apache/beam#39255](https://github.com/apache/beam/pull/39255)
+
+---
 
 ## Challenges Faced
 
-* **Quiet Failures during Bootstrap**: Because `Platform` is initialized very early in JVM loading, standard logging libraries are not yet configured. The exception must be swallowed and handled completely internally to prevent cascade failures without leaving debugging traces in production logs.
-* **JDK Cleaner Alternatives**: We explored using `java.lang.ref.Cleaner` (introduced in Java 9), but since it requires a different registration structure and Spark targets a wide range of JDK versions (relying on command-line exports in older ones), keeping the simple GC fallback is the most robust and low-risk design for Spark's core.
+- **Deadlock and Connection Blocking Avoidance:** Closing a gRPC multiplexer terminates physical network streams, which can block. Invoking `multiplexer.close()` while holding `dataStreamLifecycleLock` could result in severe thread contention or deadlocks under high request concurrency. We resolved this by building a list of multiplexers to close inside the synchronized block, but executing the actual `.close()` operations outside the lock.
+- **Concurrent Access Consistency:** Since gRPC outbound observers can be concurrently requested or torn down, we synchronized both the cache creation in `getMultiplexer` and the reference adjustments under a shared `dataStreamLifecycleLock` to prevent referencing a partially destroyed multiplexer.
+- **Fork CI Limitations:** Upstream PreCommit checks rely on Google's self-hosted Runners, which fail on personal GitHub forks. We added `fork_ci_java_harness.yml` so that contributors can run the build, spotlessCheck, and harness unit tests cleanly on their own GitHub accounts before submitting PRs upstream.
+
+---
 
 ## Testing Strategy
 
-* **Unit Testing**: Executed `PlatformSuite` tests to verify Platform memory access methods remain fully functional even when the cleaner is disabled.
-* **Manual Verification**: Booted a local Spark session on JDK 26 and verified SparkContext loads successfully, runs sample pipelines, and performs GC direct memory reclamation without crash.
+- **Unit Testing:**
+  - Executed the unit tests covering the multiplexer lifecycle, client reference counting, and exception resilience in `BeamFnDataGrpcClientTest` and `ProcessBundleHandlerTest`:
+    ```bash
+    ./gradlew :sdks:java:harness:test --tests org.apache.beam.fn.harness.data.BeamFnDataGrpcClientTest --tests org.apache.beam.fn.harness.control.ProcessBundleHandlerTest
+    ```
+- **Fork CI Validation:**
+  - Automated tests run on every push to the fork branch via the newly added `Fork CI Java Harness` workflow.
+
+---
 
 ## Pull Request & Feedback
 
-* **PR Link:** [`apache/spark#56952`](https://github.com/apache/spark/pull/56952)
-* **PR Description:**
-  - **What does this PR do?**
-    Tolerates the absence of `jdk.internal.ref.Cleaner` on JDK 26+ during Spark `Platform` initialization.
-  - **Why was this PR needed?**
-    Closes #56939. The class `jdk.internal.ref.Cleaner` has been removed in JDK 26, causing a fatal class-loading error.
-  - **Testing details:**
-    Validated on JDK 26 runtime to verify successful class loading and test suites.
-* **Status:** Awaiting review.
+- **PR Link:** [apache/beam#39255](https://github.com/apache/beam/pull/39255)
+- **PR Description:** This PR resolves the gRPC stream and memory leak in the Java SDK harness by reference counting the usage of named data streams and closing/evicting their multiplexers when no active bundles are using them.
+- **Current Status:** Merged
 
----
----
----
 
