@@ -3,7 +3,7 @@
 **Contribution Number:** 1  
 **Student:** Krishna Manchikalapudi
 **Issue:** [AcademySoftwareFoundation/MaterialX #2668](https://github.com/AcademySoftwareFoundation/MaterialX/issues/2668)  
-**Status:** Awaiting review  
+**Status:** Waiting on PR accepteance 
 **Branch:** [krishnamanchikalapudi/MaterialX@fix-issue-2668](https://github.com/krishnamanchikalapudi/MaterialX/tree/fix-issue-2668)  
 **PR:** [MaterialX/pull/2982](https://github.com/AcademySoftwareFoundation/MaterialX/pull/2982)
 
@@ -162,6 +162,8 @@ We completed the implementation of automated Slang shader validation within the 
 * **Maintainer Feedback:** The pull request is currently open and awaiting review from the project maintainers. The automated EasyCLA check has already run and confirmed contributor licensing agreement validation. All 35 automated CI checks on the pull request (including the new Slang validation step, build steps, and compatibility suites) have completed successfully and passed.
 * **Current Status:** Awaiting review
 
+![Jul 16, 2026](./images/materialx/2026-07-16.png)
+
 ---
 ---
 ---
@@ -171,7 +173,7 @@ We completed the implementation of automated Slang shader validation within the 
 **Contribution Number:** 2  
 **Student:** Krishna Manchikalapudi
 **Issue:** [Apache/Opendal #2198](https://github.com/apache/opendal/issues/2198)  
-**Status:** Awaiting review  
+**Status:** Waiting on PR accepteance  
 **Branch:** [krishnamanchikalapudi/Opendal@fix-issue-2198](https://github.com/krishnamanchikalapudi/apache-opendal)  
 **PR:** [apache/opendal#7793](https://github.com/apache/opendal/pull/7793)
 
@@ -276,7 +278,11 @@ We completed the implementation of `stat` support and corrected capability gatin
   - **AI Usage Statement:** I used Gemini (Antigravity AI coding assistant) to assist in reproducing the issue, identifying the REST API constraints, implementing the `stat` directory check logic, and structuring the PR description.
 * **GitHub Issue Comment:**
   > Hi @Xuanwo, I've resolved the `vercel_artifacts` behavior test failures by implementing the `stat` operation via a `HEAD` request to `/v8/artifacts/{hash}`, along with returning directory metadata for paths ending with a slash. Since Vercel's Remote Cache REST API does not support deleting individual cache entries or directory hierarchies, we keep `delete` and `create_dir` disabled in the backend capabilities so the test runner correctly bypasses them. I have submitted a pull request with these changes for your review.
-* **Status:** Awaiting review
+* **Status:** Awaiting Owner review
+
+![Jul 16, 2026](./images/opendal/2026-07-16.png)
+![Jul 12, 2026](./images/opendal/2026-07-12.png)
+
 
 ---
 ---
@@ -287,7 +293,7 @@ We completed the implementation of `stat` support and corrected capability gatin
 **Contribution Number:** 3  
 **Student:** Krishna Manchikalapudi  
 **Issue:** [apache/beam#39001](https://github.com/apache/beam/issues/39001)  
-**Status:** Merged  
+**Status:** Waiting on PR accepteance   
 **Branch:** [krishnamanchikalapudi/apache-beam@fix-39001-named-data-stream-lifecycle](https://github.com/krishnamanchikalapudi/apache-beam/tree/fix-39001-named-data-stream-lifecycle)  
 **PR:** [apache/beam#39255](https://github.com/apache/beam/pull/39255)  
 
@@ -322,7 +328,6 @@ In the Java SDK harness, the `BeamFnDataGrpcClient` cached the multiplexer (and 
 - **[`BeamFnDataClient.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/data/BeamFnDataClient.java)**
 - **[`BeamFnDataGrpcClient.java`](file:///Users/krishna/Documents/GitHub/apache-beam/sdks/java/harness/src/main/java/org/apache/beam/fn/harness/data/BeamFnDataGrpcClient.java)**
 
----
 
 ## Reproduction Process
 
@@ -341,7 +346,6 @@ Because this is a resource leak, reproduction involves showing that named data s
 3. Check the internal client cache `multiplexerCache`. Notice that the multiplexer and its active gRPC connection targeting `streamA` are still cached and have not been closed or evicted.
 4. Over a long-running pipeline execution where the runner assigns a unique stream ID per bundle, observe memory growth and socket depletion in the SDK harness JVM due to leaked gRPC channels.
 
----
 
 ## Solution Approach
 
@@ -368,7 +372,6 @@ Because this is a resource leak, reproduction involves showing that named data s
 - The default data stream is never closed on release.
 - Named data streams are correctly cleaned up even if the bundle processing fails with an exception.
 
----
 
 ## Implementation Notes
 
@@ -396,14 +399,12 @@ We completed the implementation of reference-counted named data stream lifecycle
 * **[`CHANGES.md`](file:///Users/krishna/Documents/GitHub/apache-beam/CHANGES.md)**:
   - Documented the bugfix under the "Bugfixes" section.
 
----
 
 ## Code Changes
 
 * **Active Development Branch:** [`krishnamanchikalapudi/apache-beam@fix-39001-named-data-stream-lifecycle`](https://github.com/krishnamanchikalapudi/apache-beam/tree/fix-39001-named-data-stream-lifecycle)
-* **Pull Request:** [apache/beam#39255](https://github.com/apache/beam/pull/39255)
+* **Pull Request:** Awaiting PR creation
 
----
 
 ## Challenges Faced
 
@@ -411,7 +412,6 @@ We completed the implementation of reference-counted named data stream lifecycle
 - **Concurrent Access Consistency:** Since gRPC outbound observers can be concurrently requested or torn down, we synchronized both the cache creation in `getMultiplexer` and the reference adjustments under a shared `dataStreamLifecycleLock` to prevent referencing a partially destroyed multiplexer.
 - **Fork CI Limitations:** Upstream PreCommit checks rely on Google's self-hosted Runners, which fail on personal GitHub forks. We added `fork_ci_java_harness.yml` so that contributors can run the build, spotlessCheck, and harness unit tests cleanly on their own GitHub accounts before submitting PRs upstream.
 
----
 
 ## Testing Strategy
 
@@ -423,12 +423,17 @@ We completed the implementation of reference-counted named data stream lifecycle
 - **Fork CI Validation:**
   - Automated tests run on every push to the fork branch via the newly added `Fork CI Java Harness` workflow.
 
----
+
 
 ## Pull Request & Feedback
 
-- **PR Link:** [apache/beam#39255](https://github.com/apache/beam/pull/39255)
-- **PR Description:** This PR resolves the gRPC stream and memory leak in the Java SDK harness by reference counting the usage of named data streams and closing/evicting their multiplexers when no active bundles are using them.
-- **Current Status:** Merged
+- The changes have been committed locally on the branch `fix-39001-named-data-stream-lifecycle` and are ready for PR submission.
+- **Current Status:** Awaiting PR creation and upstream review.
 
+
+![July 16, 2026](./images/beam/2026-07-16.png)
+
+----
+----
+----
 
